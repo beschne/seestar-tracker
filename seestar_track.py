@@ -90,9 +90,10 @@ PARK_AZ = float(_see.get("park_az", 0.0))  # north — safe at all mid-latitudes
 PARK_EL = float(_see.get("park_el", 5.0))
 _PARK_CUSTOM = "park_az" in _see or "park_el" in _see
 
-_GREEN = "\033[32m" if sys.stdout.isatty() else ""
-_RED = "\033[31m" if sys.stdout.isatty() else ""
-_RESET = "\033[0m" if sys.stdout.isatty() else ""
+_GREEN  = "\033[32m"       if sys.stdout.isatty() else ""
+_RED    = "\033[31m"       if sys.stdout.isatty() else ""
+_ORANGE = "\033[38;5;208m" if sys.stdout.isatty() else ""
+_RESET  = "\033[0m"        if sys.stdout.isatty() else ""
 
 USER_AGENT = "seestar-track/1.0 (personal hobby use)"
 
@@ -593,7 +594,7 @@ class SeestarClient:
         code = (resp2 or {}).get("code", -1)
         if code != 0:
             raise ConnectionError(f"Authentication failed: {resp2}")
-        print("  Authenticated.", flush=True)
+        print("Authenticated.", flush=True)
 
     def _recv_for_method(self, method, params=None, send=False):
         """Send a command and return the first response matching this method/id,
@@ -619,7 +620,7 @@ class SeestarClient:
             except (BrokenPipeError, ConnectionError, OSError):
                 if attempt:
                     raise
-                print("  Connection lost — reconnecting …", flush=True)
+                print("Connection lost — reconnecting …", flush=True)
                 self._connect()
 
     def current_radec(self):
@@ -830,7 +831,7 @@ def main():
     sun_vis = f"el {sun_el0:+.1f}°  az {sun_az0:.1f}°"
     if sun_el0 < 0:
         sun_vis += "  (below horizon)"
-    print(f"☉ {sun_vis}  · exclusion zone: {SUN_EXCLUSION_DEG}°")
+    print(f"☉ {sun_vis}  · sun exclusion zone: {SUN_EXCLUSION_DEG:.0f}° around the sun")
 
     if SEESTAR_SECTOR:
         print(f"Sector: {SEESTAR_SECTOR[0]:.0f}°–{SEESTAR_SECTOR[1]:.0f}°")
@@ -950,7 +951,7 @@ def main():
                 / 1000.0
             )
             proj_tag = f"+{SLEW_TIME_S:.0f}s" if proj is not None else "now"
-            approach_tag = f" in{entry_t}s" if entry_t else ""
+            approach_tag = f" {_ORANGE}in {entry_t}s{_RESET}" if entry_t else ""
 
             dist_ok = dist_km <= PHOTO_MAX_KM
             el_ok = el >= PHOTO_MIN_EL_DEG
@@ -967,19 +968,20 @@ def main():
             print(
                 f"[{now:%H:%M:%S}] {ident_fmt} "
                 f"az{az:6.1f}° {el_fmt} {dist_fmt} "
-                f"{proj_tag} ☉{sep:3.0f}°{approach_tag}"
+                f"{proj_tag} ☉{sep:3.0f}°"
                 + (f" Δ{AZ_OFFSET_DEG:+.1f}°" if AZ_OFFSET_DEG else "")
+                + approach_tag
             )
 
             if client and dist_ok and not paused:
                 msg_id, resp = client.goto_radec(ra, dec, label=ident)
                 if resp is None:
-                    print("  (no response from Seestar)")
+                    print("(no response from Seestar)")
                 elif "Event" in resp:
                     pass  # unsolicited event — not an error
                 elif resp.get("code", 0) != 0:
                     print(
-                        f"  Seestar error code {resp.get('code')}: {resp.get('error', resp)}"
+                        f"Seestar error code {resp.get('code')}: {resp.get('error', resp)}"
                     )
                 else:
                     _last_goto_az, _last_goto_el = goto_az, goto_el
