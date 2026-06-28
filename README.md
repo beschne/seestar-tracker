@@ -87,6 +87,42 @@ photo_max_km     = 20.0   # green when closer than this
 photo_min_el_deg = 15.0   # green when higher than this
 ```
 
+## Log output
+
+Each tracking line follows this format:
+
+```
+[HH:MM:SS] CALLSGN  az NNN.N° el ±NN.N°  NNNkm +NNs ☉NNN° [inNs] [Δ±N.N°]
+```
+
+| Field | Colour | Meaning |
+|---|---|---|
+| `CALLSGN` | green | Green when both photo thresholds are met |
+| `az NNN.N°` | — | Commanded azimuth (after correction and predictive offset) |
+| `el ±NN.N°` | red | Elevation; red when below `photo_min_el_deg` |
+| `NNNkm` | red | Slant range; red when above `photo_max_km` |
+| `+NNs` | — | Predictive offset: goto aims this many seconds ahead |
+| `☉NNN°` | — | Angular separation from the sun |
+| `inNs` | — | Seconds until aircraft enters the sector (approaching only) |
+| `Δ±N.N°` | — | Active azimuth correction (omitted when zero) |
+
+Example (colours cannot be shown in plain text):
+
+```
+☉ el +47.2°  az 112.0°  · exclusion zone: 30.0°
+Sector: 210°–240°  ·  auto-select: slowest in-sector aircraft.
+[09:12:04] LHX942  az 209.3° el  +3.1°  187km +16s ☉ 93° Δ-1.5°  in42s
+[09:12:06] LHX942  az 212.7° el  +4.2°  121km +16s ☉ 94° Δ-1.5°
+[09:12:10] DLH1VR  az 222.3° el  +8.3°   28km +16s ☉ 99° Δ-1.5°
+[09:12:12] DLH1VR  az 225.1° el +12.6°   22km +16s ☉101° Δ-1.5°
+No aircraft data — retrying …
+[09:12:16] DLH1VR  az 227.5° el +16.4°   17km +16s ☉101° Δ-1.5°
+[09:12:20] DLH1VR  az 230.0° el +20.1°   14km +16s ☉101° Δ-1.5°
+```
+
+Lines 3–6: `el` and the range are both red — the plane is too far and too low for a useful shot.
+Line 8 is the first where both thresholds are met (`el ≥ 15°`, range ≤ 20 km): the callsign turns green.
+
 ## Sun safety
 
 Two independent checks prevent the mount from pointing at the sun:

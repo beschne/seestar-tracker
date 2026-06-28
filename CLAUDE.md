@@ -53,6 +53,26 @@ and elevation ≥ `PHOTO_MIN_EL_DEG` (default 15°). Both are configurable via
 `photo_max_km` / `photo_min_el_deg` in `[seestar]`. Color is suppressed when
 stdout is not a TTY.
 
+## Log format
+```
+[HH:MM:SS] CALLSGN  az NNN.N° el ±NN.N°  NNNkm +NNs ☉NNN° [inNs] [Δ±N.N°]
+```
+- Callsign: **green** when both photo thresholds are met
+- `el`: **red** when below `PHOTO_MIN_EL_DEG`
+- `NNNkm`: **red** when above `PHOTO_MAX_KM`
+- `+NNs`: predictive offset (seconds ahead the goto targets); `now` if no projection
+- `☉NNN°`: sun separation
+- `inNs`: seconds until aircraft enters sector (approaching only)
+- `Δ±N.N°`: active azimuth correction; omitted when zero
+
+Example:
+```
+[09:12:04] LHX942  az 209.3° el  +3.1°  187km +16s ☉ 93° Δ-1.5°  in42s
+[09:12:10] DLH1VR  az 222.3° el  +8.3°   28km +16s ☉ 99° Δ-1.5°
+[09:12:16] DLH1VR  az 227.5° el +16.4°   17km +16s ☉101° Δ-1.5°
+```
+Line 1: `el` and range both red. Line 3: both in range → callsign green.
+
 ## Pointing accuracy and compass correction
 The Seestar's internal magnetometer is the dominant error source in alt/az mode:
 typical accuracy is ±5–15° in azimuth. The accelerometer (leveling) is much more
@@ -60,7 +80,7 @@ accurate (±0.5–1°) and does not need correction.
 
 `az_offset_deg` in `[seestar]` applies a fixed azimuth correction before every
 `altaz_to_radec` call. Sign convention: positive = scope was pointing left of target.
-When non-zero, the log shows `az_off +X.X°` on each line.
+When non-zero, the log shows `Δ+X.X°` on each line.
 
 The offset is stable for a given setup location and does not drift during a session.
 Re-measure after moving the Seestar or restarting the app.
