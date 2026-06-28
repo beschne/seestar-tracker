@@ -773,18 +773,16 @@ def main():
 
             goto_az = (goto_az + AZ_OFFSET_DEG) % 360
             ra, dec = altaz_to_radec(goto_el, goto_az, now)
-            ident   = ac.get("callsign") or ac.get("hex") or "?"
-            alt_km  = (ac["alt_ft"] or 0) * 0.3048 / 1000
-            proj_tag    = f"+{SLEW_TIME_S:.0f}s" if proj is not None else "now"
-            approach_tag = "" if entry_t == 0 else f"  [→sector in {entry_t}s]"
+            ident    = ac.get("callsign") or ac.get("hex") or "?"
+            dist_km  = math.hypot(_haversine_m(ac["lat"], ac["lon"]),
+                                  (ac["alt_ft"] or 0) * 0.3048) / 1000.0
+            proj_tag     = f"+{SLEW_TIME_S:.0f}s" if proj is not None else "now"
+            approach_tag = f" in{entry_t}s" if entry_t else ""
 
-            offset_tag = f"  az_off {AZ_OFFSET_DEG:+.1f}°" if AZ_OFFSET_DEG else ""
             print(
-                f"[{now:%H:%M:%S}] {ident:8s}  "
-                f"az {az:6.1f}°  el {el:+5.1f}°  "
-                f"alt {alt_km:.1f} km  "
-                f"→ RA {ra:.4f}h  Dec {dec:+.3f}°  ({proj_tag})"
-                f"  sun {sep:.0f}°away  [{source}]{approach_tag}{offset_tag}"
+                f"[{now:%H:%M:%S}] {ident:7s} "
+                f"az{az:6.1f}° el{el:+5.1f}° {dist_km:4.0f}km "
+                f"→ RA{ra:6.3f}h Dec{dec:+6.1f}° {proj_tag} sun{sep:.0f}°{approach_tag}"
             )
 
             if client:
