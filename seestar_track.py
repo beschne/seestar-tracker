@@ -72,6 +72,11 @@ AZ_OFFSET_DEG  = float(_see.get("az_offset_deg", 0.0))  # compass correction —
 
 _MIN_SUN_EXCLUSION = 15.0   # hard floor — cannot be configured below this
 SUN_EXCLUSION_DEG  = max(_MIN_SUN_EXCLUSION, float(_see.get("sun_exclusion_deg", 30.0)))
+PHOTO_MAX_KM       = float(_see.get("photo_max_km", 20.0))
+PHOTO_MIN_EL_DEG   = float(_see.get("photo_min_el_deg", 15.0))
+
+_GREEN = "\033[32m" if sys.stdout.isatty() else ""
+_RESET = "\033[0m"  if sys.stdout.isatty() else ""
 
 USER_AGENT = "seestar-track/1.0 (personal hobby use)"
 
@@ -779,8 +784,12 @@ def main():
             proj_tag     = f"+{SLEW_TIME_S:.0f}s" if proj is not None else "now"
             approach_tag = f" in{entry_t}s" if entry_t else ""
 
+            photo_ok     = dist_km <= PHOTO_MAX_KM and el >= PHOTO_MIN_EL_DEG
+            ident_padded = f"{ident:7s}"
+            ident_fmt    = f"{_GREEN}{ident_padded}{_RESET}" if photo_ok else ident_padded
+
             print(
-                f"[{now:%H:%M:%S}] {ident:7s} "
+                f"[{now:%H:%M:%S}] {ident_fmt} "
                 f"az{az:6.1f}° el{el:+5.1f}° {dist_km:4.0f}km "
                 f"→ RA{ra:6.3f}h Dec{dec:+6.1f}° {proj_tag} ☉{sep:.0f}°{approach_tag}"
                 + (f" Δ{AZ_OFFSET_DEG:+.1f}°" if AZ_OFFSET_DEG else "")

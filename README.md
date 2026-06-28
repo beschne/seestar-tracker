@@ -46,6 +46,8 @@ python3 seestar_track.py             # live tracking
 | `target_callsign` | — | Lock onto a specific callsign (optional) |
 | `target_hex` | — | Lock onto a specific Mode-S hex (optional) |
 | `az_offset_deg` | 0.0 | Compass correction in degrees (see [Pointing accuracy](#pointing-accuracy-and-compass-calibration)) |
+| `photo_max_km` | 20.0 | Max slant range for photo opportunity indicator (green callsign) |
+| `photo_min_el_deg` | 15.0 | Min elevation for photo opportunity indicator (green callsign) |
 
 ## RSA private key (firmware 7.18+)
 
@@ -64,6 +66,26 @@ Set `pem` in `config.toml` to this path. Leave it empty only on older firmware.
    [adsb.one](https://adsb.one), picks the in-sector aircraft with the lowest angular rate.
 3. Uses dead-reckoning to project the aircraft's position `slew_time_s` seconds forward.
 4. Converts the predicted alt/az to RA/Dec and sends a `scope_goto` command.
+
+## Photo opportunity indicator
+
+The callsign in the tracking log turns **green** when the aircraft meets both
+conditions for a useful shot:
+
+- Slant range ≤ `photo_max_km` (default 20 km)
+- Elevation ≥ `photo_min_el_deg` (default 15°)
+
+At 42 km and 4° elevation a commercial aircraft subtends only ~3 arcminutes —
+barely a dot. At 15 km and 20° it fills a useful fraction of the Seestar's
+~2°×1° field and atmospheric distortion is much reduced.
+
+Tune the thresholds in `config.toml` to match your expectations:
+
+```toml
+[seestar]
+photo_max_km     = 20.0   # green when closer than this
+photo_min_el_deg = 15.0   # green when higher than this
+```
 
 ## Sun safety
 

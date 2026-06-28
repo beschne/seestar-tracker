@@ -47,6 +47,12 @@ A startup check queries the current scope position and refuses to run if already
 - Looks ahead `LOOKAHEAD_S` (default 90 s) for aircraft about to enter the sector.
 - Every goto aims at `_project_position(ac, SLEW_TIME_S)` — dead-reckoning from ADS-B track + speed.
 
+## Photo opportunity indicator
+Callsign turns green (ANSI) when slant range ≤ `PHOTO_MAX_KM` (default 20 km)
+and elevation ≥ `PHOTO_MIN_EL_DEG` (default 15°). Both are configurable via
+`photo_max_km` / `photo_min_el_deg` in `[seestar]`. Color is suppressed when
+stdout is not a TTY.
+
 ## Pointing accuracy and compass correction
 The Seestar's internal magnetometer is the dominant error source in alt/az mode:
 typical accuracy is ±5–15° in azimuth. The accelerometer (leveling) is much more
