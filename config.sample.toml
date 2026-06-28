@@ -44,6 +44,14 @@ pem = "/Applications/Seestar.app/Wrapper/Seestar.app/my_private.pem"
 # photo_max_km     = 20.0   # max slant range in km
 # photo_min_el_deg = 15.0   # min elevation in degrees
 
+# Park position — scope slews here when no suitable target is found.
+# Default: az 0° (north), el 5°. North is safe at all mid-latitudes because
+# the sun never crosses north of the zenith between ~23.5°N and ~66.5°N.
+# If you override this, the script will exit at startup if the position is
+# within the sun exclusion zone.
+# park_az = 0.0   # azimuth in degrees (0 = north)
+# park_el = 5.0   # elevation in degrees
+
 # Sun exclusion zone — the scope will never point closer than this to the sun.
 # Hard minimum of 15° is enforced in code regardless of this setting.
 # sun_exclusion_deg = 30.0

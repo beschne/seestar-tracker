@@ -24,17 +24,22 @@ import argparse
 import json
 import math
 import os
+import select
 import socket
 import sys
+import termios
 import time
-import tomllib
+import tty
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
+import tomllib
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
+
 
 def _load_config():
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.toml")
@@ -42,48 +47,59 @@ def _load_config():
         with open(path, "rb") as f:
             return tomllib.load(f)
     except FileNotFoundError:
-        print("Error: config.toml not found. Copy config.sample.toml and edit it.",
-              file=sys.stderr)
+        print(
+            "Error: config.toml not found. Copy config.sample.toml and edit it.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
-_cfg               = _load_config()
-_obs               = _cfg["observer"]
-CENTER_LAT         = float(_obs["center_lat"])
-CENTER_LON         = float(_obs["center_lon"])
-RADIUS_KM          = float(_obs["radius_km"])
-OBSERVER_ALT_M     = float(_obs.get("observer_alt_m", 0.0))
-GEOID_OFFSET_M     = float(_obs.get("geoid_offset_m", 0.0))
+
+_cfg = _load_config()
+_obs = _cfg["observer"]
+CENTER_LAT = float(_obs["center_lat"])
+CENTER_LON = float(_obs["center_lon"])
+RADIUS_KM = float(_obs["radius_km"])
+OBSERVER_ALT_M = float(_obs.get("observer_alt_m", 0.0))
+GEOID_OFFSET_M = float(_obs.get("geoid_offset_m", 0.0))
 OBSERVER_ALT_MSL_M = OBSERVER_ALT_M - GEOID_OFFSET_M
-RADIUS_NM          = RADIUS_KM / 1.852
+RADIUS_NM = RADIUS_KM / 1.852
 
-_see               = _cfg.get("seestar", {})
-SEESTAR_HOST       = _see.get("host", "")
-SEESTAR_PORT       = int(_see.get("port", 4700))
-TARGET_CALLSIGN    = _see.get("target_callsign", "").strip().upper() or None
-TARGET_HEX         = _see.get("target_hex", "").strip().lower() or None
-POLL_INTERVAL      = float(_see.get("poll_interval_s", 2.0))
-SEESTAR_PEM_PATH   = _see.get("pem", "").strip() or None
+_see = _cfg.get("seestar", {})
+SEESTAR_HOST = _see.get("host", "")
+SEESTAR_PORT = int(_see.get("port", 4700))
+TARGET_CALLSIGN = _see.get("target_callsign", "").strip().upper() or None
+TARGET_HEX = _see.get("target_hex", "").strip().lower() or None
+POLL_INTERVAL = float(_see.get("poll_interval_s", 2.0))
+SEESTAR_PEM_PATH = _see.get("pem", "").strip() or None
 _sec_start = _see.get("sector_start")
-_sec_end   = _see.get("sector_end")
-SEESTAR_SECTOR = (float(_sec_start), float(_sec_end)) if _sec_start is not None else None
-SLEW_TIME_S    = float(_see.get("slew_time_s",  16.0))  # observed typical slew duration
-LOOKAHEAD_S    = float(_see.get("lookahead_s",  90.0))  # pre-position this many seconds ahead
-AZ_OFFSET_DEG  = float(_see.get("az_offset_deg", 0.0))  # compass correction — see README
+_sec_end = _see.get("sector_end")
+SEESTAR_SECTOR = (
+    (float(_sec_start), float(_sec_end)) if _sec_start is not None else None
+)
+SLEW_TIME_S = float(_see.get("slew_time_s", 16.0))  # observed typical slew duration
+LOOKAHEAD_S = float(
+    _see.get("lookahead_s", 90.0)
+)  # pre-position this many seconds ahead
+AZ_OFFSET_DEG = float(_see.get("az_offset_deg", 0.0))  # compass correction — see README
 
-_MIN_SUN_EXCLUSION = 15.0   # hard floor — cannot be configured below this
-SUN_EXCLUSION_DEG  = max(_MIN_SUN_EXCLUSION, float(_see.get("sun_exclusion_deg", 30.0)))
-PHOTO_MAX_KM       = float(_see.get("photo_max_km", 20.0))
-PHOTO_MIN_EL_DEG   = float(_see.get("photo_min_el_deg", 15.0))
+_MIN_SUN_EXCLUSION = 15.0  # hard floor — cannot be configured below this
+SUN_EXCLUSION_DEG = max(_MIN_SUN_EXCLUSION, float(_see.get("sun_exclusion_deg", 30.0)))
+PHOTO_MAX_KM = float(_see.get("photo_max_km", 20.0))
+PHOTO_MIN_EL_DEG = float(_see.get("photo_min_el_deg", 15.0))
+PARK_AZ = float(_see.get("park_az", 0.0))  # north — safe at all mid-latitudes
+PARK_EL = float(_see.get("park_el", 5.0))
+_PARK_CUSTOM = "park_az" in _see or "park_el" in _see
 
 _GREEN = "\033[32m" if sys.stdout.isatty() else ""
-_RED   = "\033[31m" if sys.stdout.isatty() else ""
-_RESET = "\033[0m"  if sys.stdout.isatty() else ""
+_RED = "\033[31m" if sys.stdout.isatty() else ""
+_RESET = "\033[0m" if sys.stdout.isatty() else ""
 
 USER_AGENT = "seestar-track/1.0 (personal hobby use)"
 
 # ---------------------------------------------------------------------------
 # ADS-B sources
 # ---------------------------------------------------------------------------
+
 
 def _http_get_json(url):
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
@@ -96,13 +112,13 @@ def _normalize_adsbx(ac):
     if alt == "ground":
         alt = 0
     return {
-        "hex":      ac.get("hex"),
+        "hex": ac.get("hex"),
         "callsign": (ac.get("flight") or "").strip() or None,
-        "lat":      ac.get("lat"),
-        "lon":      ac.get("lon"),
-        "alt_ft":   alt,
-        "track":    ac.get("track"),
-        "gs_kt":    ac.get("gs"),
+        "lat": ac.get("lat"),
+        "lon": ac.get("lon"),
+        "alt_ft": alt,
+        "track": ac.get("track"),
+        "gs_kt": ac.get("gs"),
     }
 
 
@@ -123,22 +139,34 @@ def fetch_aircraft():
     for name, fn in _SOURCES:
         try:
             planes = fn(CENTER_LAT, CENTER_LON, RADIUS_NM)
-            planes = [p for p in planes if p["lat"] is not None and p["lon"] is not None]
+            planes = [
+                p for p in planes if p["lat"] is not None and p["lon"] is not None
+            ]
             return name, planes
-        except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError):
+        except (
+            urllib.error.URLError,
+            urllib.error.HTTPError,
+            ValueError,
+            TimeoutError,
+        ):
             continue
     return None, []
+
 
 # ---------------------------------------------------------------------------
 # Geometry: az/el from observer to aircraft
 # ---------------------------------------------------------------------------
+
 
 def _haversine_m(lat2, lon2):
     R = 6_371_000.0
     phi1, phi2 = math.radians(CENTER_LAT), math.radians(lat2)
     dphi = math.radians(lat2 - CENTER_LAT)
     dlam = math.radians(lon2 - CENTER_LON)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    a = (
+        math.sin(dphi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    )
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
@@ -147,7 +175,9 @@ def azimuth_deg(lat2, lon2):
     phi2 = math.radians(lat2)
     dlam = math.radians(lon2 - CENTER_LON)
     y = math.sin(dlam) * math.cos(phi2)
-    x = math.cos(phi1) * math.sin(phi2) - math.sin(phi1) * math.cos(phi2) * math.cos(dlam)
+    x = math.cos(phi1) * math.sin(phi2) - math.sin(phi1) * math.cos(phi2) * math.cos(
+        dlam
+    )
     return (math.degrees(math.atan2(y, x)) + 360) % 360
 
 
@@ -168,7 +198,7 @@ def _in_seestar_sector(az):
         return True
     start, end = SEESTAR_SECTOR
     end_adj = end if end > start else end + 360
-    az_adj  = az if az >= start else az + 360
+    az_adj = az if az >= start else az + 360
     return start <= az_adj <= end_adj
 
 
@@ -178,7 +208,7 @@ def _project_position(ac, seconds):
     if ac.get("track") is None or not ac.get("gs_kt"):
         return None
     track_r = math.radians(ac["track"])
-    dist_m  = ac["gs_kt"] * 1852.0 / 3600.0 * seconds
+    dist_m = ac["gs_kt"] * 1852.0 / 3600.0 * seconds
     dlat = dist_m * math.cos(track_r) / 111_320.0
     dlon = dist_m * math.sin(track_r) / (111_320.0 * math.cos(math.radians(ac["lat"])))
     return ac["lat"] + dlat, ac["lon"] + dlon
@@ -199,9 +229,11 @@ def _sector_entry_seconds(ac):
             return t
     return None
 
+
 # ---------------------------------------------------------------------------
 # Coordinate conversion: alt/az → RA/Dec
 # ---------------------------------------------------------------------------
+
 
 def _gmst_hours(utc_dt):
     """Greenwich Mean Sidereal Time in hours (IAU 1982 approximation, ±0.1 s)."""
@@ -215,33 +247,40 @@ def altaz_to_radec(alt_deg, az_deg, utc_dt):
     configured observer location and given UTC time."""
     lat = math.radians(CENTER_LAT)
     alt = math.radians(alt_deg)
-    az  = math.radians(az_deg)
+    az = math.radians(az_deg)
 
-    sin_dec = math.sin(alt) * math.sin(lat) + math.cos(alt) * math.cos(lat) * math.cos(az)
+    sin_dec = math.sin(alt) * math.sin(lat) + math.cos(alt) * math.cos(lat) * math.cos(
+        az
+    )
     sin_dec = max(-1.0, min(1.0, sin_dec))
-    dec     = math.asin(sin_dec)
+    dec = math.asin(sin_dec)
 
     cos_ha_num = math.sin(alt) - math.sin(dec) * math.sin(lat)
     cos_ha_den = math.cos(dec) * math.cos(lat)
     cos_ha = (cos_ha_num / cos_ha_den) if abs(cos_ha_den) > 1e-9 else 0.0
     cos_ha = max(-1.0, min(1.0, cos_ha))
     ha_rad = math.acos(cos_ha)
-    if math.sin(az) > 0:                # object moving eastward → negative HA
+    if math.sin(az) > 0:  # object moving eastward → negative HA
         ha_rad = 2 * math.pi - ha_rad
 
-    lst   = (_gmst_hours(utc_dt) + CENTER_LON / 15.0) % 24   # local sidereal time
-    ha_h  = math.degrees(ha_rad) / 15.0
-    ra    = (lst - ha_h) % 24
+    lst = (_gmst_hours(utc_dt) + CENTER_LON / 15.0) % 24  # local sidereal time
+    ha_h = math.degrees(ha_rad) / 15.0
+    ra = (lst - ha_h) % 24
 
     return ra, math.degrees(dec)
+
 
 # ---------------------------------------------------------------------------
 # Sun position and exclusion zone  (SAFETY — do not remove)
 # ---------------------------------------------------------------------------
 
+
 def _julian_day(utc_dt):
     y, m = utc_dt.year, utc_dt.month
-    d = utc_dt.day + (utc_dt.hour + utc_dt.minute / 60.0 + utc_dt.second / 3600.0) / 24.0
+    d = (
+        utc_dt.day
+        + (utc_dt.hour + utc_dt.minute / 60.0 + utc_dt.second / 3600.0) / 24.0
+    )
     if m <= 2:
         y -= 1
         m += 12
@@ -252,36 +291,38 @@ def _julian_day(utc_dt):
 
 def _sun_radec(utc_dt):
     """Sun RA (hours) and Dec (degrees). Meeus ch.25/27, ~0.01° accuracy."""
-    T     = (_julian_day(utc_dt) - 2451545.0) / 36525.0
-    L0    = (280.46646 + 36000.76983 * T) % 360
-    M     = (357.52911 + 35999.05029 * T - 0.0001537 * T * T) % 360
-    Mr    = math.radians(M)
-    C     = ((1.914602 - 0.004817 * T - 0.000014 * T * T) * math.sin(Mr)
-           + (0.019993 - 0.000101 * T) * math.sin(2 * Mr)
-           + 0.000289 * math.sin(3 * Mr))
+    T = (_julian_day(utc_dt) - 2451545.0) / 36525.0
+    L0 = (280.46646 + 36000.76983 * T) % 360
+    M = (357.52911 + 35999.05029 * T - 0.0001537 * T * T) % 360
+    Mr = math.radians(M)
+    C = (
+        (1.914602 - 0.004817 * T - 0.000014 * T * T) * math.sin(Mr)
+        + (0.019993 - 0.000101 * T) * math.sin(2 * Mr)
+        + 0.000289 * math.sin(3 * Mr)
+    )
     omega = math.radians(125.04 - 1934.136 * T)
-    lam   = math.radians((L0 + C - 0.00569 - 0.00478 * math.sin(omega)) % 360)
-    eps0  = 23.439291111 - 0.013004167 * T - 1.64e-7 * T * T + 5.04e-7 * T * T * T
-    eps   = math.radians(eps0 + 0.00256 * math.cos(omega))
-    ra    = math.atan2(math.cos(eps) * math.sin(lam), math.cos(lam))
-    dec   = math.asin(math.sin(eps) * math.sin(lam))
+    lam = math.radians((L0 + C - 0.00569 - 0.00478 * math.sin(omega)) % 360)
+    eps0 = 23.439291111 - 0.013004167 * T - 1.64e-7 * T * T + 5.04e-7 * T * T * T
+    eps = math.radians(eps0 + 0.00256 * math.cos(omega))
+    ra = math.atan2(math.cos(eps) * math.sin(lam), math.cos(lam))
+    dec = math.asin(math.sin(eps) * math.sin(lam))
     return math.degrees(ra) / 15.0 % 24, math.degrees(dec)
 
 
 def sun_altaz(utc_dt):
     """Sun altitude and azimuth (degrees) at the configured observer location."""
     ra_h, dec_d = _sun_radec(utc_dt)
-    ra    = math.radians(ra_h * 15.0)
-    dec   = math.radians(dec_d)
+    ra = math.radians(ra_h * 15.0)
+    dec = math.radians(dec_d)
     lst_h = (_gmst_hours(utc_dt) + CENTER_LON / 15.0) % 24
-    ha    = math.radians(lst_h * 15.0 - math.degrees(ra))
-    lat   = math.radians(CENTER_LAT)
+    ha = math.radians(lst_h * 15.0 - math.degrees(ra))
+    lat = math.radians(CENTER_LAT)
     sin_a = math.sin(lat) * math.sin(dec) + math.cos(lat) * math.cos(dec) * math.cos(ha)
-    alt   = math.asin(max(-1.0, min(1.0, sin_a)))
-    num   = math.sin(dec) - math.sin(alt) * math.sin(lat)
-    den   = math.cos(alt) * math.cos(lat)
+    alt = math.asin(max(-1.0, min(1.0, sin_a)))
+    num = math.sin(dec) - math.sin(alt) * math.sin(lat)
+    den = math.cos(alt) * math.cos(lat)
     cos_z = (num / den) if abs(den) > 1e-9 else 0.0
-    az    = math.acos(max(-1.0, min(1.0, cos_z)))
+    az = math.acos(max(-1.0, min(1.0, cos_z)))
     if math.sin(ha) > 0:
         az = 2 * math.pi - az
     return math.degrees(alt), math.degrees(az)
@@ -291,8 +332,9 @@ def _radec_sep_deg(ra1_h, dec1_d, ra2_h, dec2_d):
     """Angular separation between two equatorial coordinates (degrees)."""
     ra1, d1 = math.radians(ra1_h * 15.0), math.radians(dec1_d)
     ra2, d2 = math.radians(ra2_h * 15.0), math.radians(dec2_d)
-    cos_d = (math.sin(d1) * math.sin(d2) +
-             math.cos(d1) * math.cos(d2) * math.cos(ra1 - ra2))
+    cos_d = math.sin(d1) * math.sin(d2) + math.cos(d1) * math.cos(d2) * math.cos(
+        ra1 - ra2
+    )
     return math.degrees(math.acos(max(-1.0, min(1.0, cos_d))))
 
 
@@ -300,8 +342,9 @@ def _angular_sep_deg(az1, el1, az2, el2):
     """Great-circle angular separation between two (az, el) points in degrees."""
     a1, e1 = math.radians(az1), math.radians(el1)
     a2, e2 = math.radians(az2), math.radians(el2)
-    cos_d  = (math.sin(e1) * math.sin(e2)
-            + math.cos(e1) * math.cos(e2) * math.cos(a1 - a2))
+    cos_d = math.sin(e1) * math.sin(e2) + math.cos(e1) * math.cos(e2) * math.cos(
+        a1 - a2
+    )
     return math.degrees(math.acos(max(-1.0, min(1.0, cos_d))))
 
 
@@ -320,6 +363,7 @@ def check_sun_safe(az, el, sun_az, sun_el):
 # Target selection
 # ---------------------------------------------------------------------------
 
+
 def _angular_rate_deg_s(ac, prev_by_hex):
     """Estimate angular rate from two consecutive positions (deg/s).
     Returns a large value if no prior position is available."""
@@ -330,9 +374,9 @@ def _angular_rate_deg_s(ac, prev_by_hex):
     if dt < 0.5:
         return 999.0
     az1 = azimuth_deg(prev["lat"], prev["lon"])
-    az2 = azimuth_deg(ac["lat"],  ac["lon"])
+    az2 = azimuth_deg(ac["lat"], ac["lon"])
     el1 = elevation_deg(prev["lat"], prev["lon"], prev.get("alt_ft")) or 0
-    el2 = elevation_deg(ac["lat"],  ac["lon"],  ac.get("alt_ft"))    or 0
+    el2 = elevation_deg(ac["lat"], ac["lon"], ac.get("alt_ft")) or 0
     daz = abs(az2 - az1)
     if daz > 180:
         daz = 360 - daz
@@ -342,18 +386,18 @@ def _angular_rate_deg_s(ac, prev_by_hex):
 
 def select_target(aircraft, prev_by_hex, sun_az, sun_el):
     """Return (ac, az, el, entry_t) for the best candidate:
-      • entry_t = 0  → aircraft is already in the Seestar sector
-      • entry_t > 0  → aircraft will enter sector in that many seconds
-      • If target_callsign or target_hex is configured, require it.
-      • In-sector aircraft are preferred over approaching ones; within each
-        group the aircraft with the lowest angular rate wins.
-      • Any aircraft within SUN_EXCLUSION_DEG of the sun is always rejected.
+    • entry_t = 0  → aircraft is already in the Seestar sector
+    • entry_t > 0  → aircraft will enter sector in that many seconds
+    • If target_callsign or target_hex is configured, require it.
+    • In-sector aircraft are preferred over approaching ones; within each
+      group the aircraft with the lowest angular rate wins.
+    • Any aircraft within SUN_EXCLUSION_DEG of the sun is always rejected.
     """
-    in_sector   = []
+    in_sector = []
     approaching = []
     for ac in aircraft:
         if ac["alt_ft"] == 0:
-            continue                          # skip ground traffic
+            continue  # skip ground traffic
         if TARGET_HEX and ac["hex"] != TARGET_HEX:
             continue
         if TARGET_CALLSIGN and (ac["callsign"] or "").upper() != TARGET_CALLSIGN:
@@ -361,10 +405,10 @@ def select_target(aircraft, prev_by_hex, sun_az, sun_el):
         az = azimuth_deg(ac["lat"], ac["lon"])
         el = elevation_deg(ac["lat"], ac["lon"], ac["alt_ft"])
         if el is None or el < 1.0:
-            continue                          # below effective horizon
+            continue  # below effective horizon
         sep = _angular_sep_deg(az, el, sun_az, sun_el)
         if sep < SUN_EXCLUSION_DEG:
-            continue                          # too close to sun — reject
+            continue  # too close to sun — reject
         rate = _angular_rate_deg_s(ac, prev_by_hex)
         if _in_seestar_sector(az):
             in_sector.append((rate, ac, az, el))
@@ -378,10 +422,11 @@ def select_target(aircraft, prev_by_hex, sun_az, sun_el):
         _rate, ac, az, el = in_sector[0]
         return ac, az, el, 0
     if approaching:
-        approaching.sort(key=lambda t: (t[0], t[1]))   # entry_t first, then rate
+        approaching.sort(key=lambda t: (t[0], t[1]))  # entry_t first, then rate
         _entry_t, _rate, ac, az, el = approaching[0]
         return ac, az, el, _entry_t
     return None, None, None, None
+
 
 # ---------------------------------------------------------------------------
 # RSA-SHA1 signing — pure stdlib, no third-party packages
@@ -389,32 +434,46 @@ def select_target(aircraft, prev_by_hex, sun_az, sun_el):
 # ---------------------------------------------------------------------------
 
 # DER prefix for SHA1 DigestInfo (PKCS1v15): SEQUENCE { AlgorithmIdentifier, OCTET STRING }
-_SHA1_DIGEST_INFO_PREFIX = bytes([
-    0x30, 0x21,                          # SEQUENCE, 33 bytes
-    0x30, 0x09,                          # SEQUENCE (AlgorithmIdentifier), 9 bytes
-    0x06, 0x05, 0x2b, 0x0e, 0x03, 0x02, 0x1a,  # OID sha1 (1.3.14.3.2.26)
-    0x05, 0x00,                          # NULL
-    0x04, 0x14,                          # OCTET STRING, 20 bytes (SHA1 digest follows)
-])
+_SHA1_DIGEST_INFO_PREFIX = bytes(
+    [
+        0x30,
+        0x21,  # SEQUENCE, 33 bytes
+        0x30,
+        0x09,  # SEQUENCE (AlgorithmIdentifier), 9 bytes
+        0x06,
+        0x05,
+        0x2B,
+        0x0E,
+        0x03,
+        0x02,
+        0x1A,  # OID sha1 (1.3.14.3.2.26)
+        0x05,
+        0x00,  # NULL
+        0x04,
+        0x14,  # OCTET STRING, 20 bytes (SHA1 digest follows)
+    ]
+)
 
 
 def _asn1_length(data, pos):
-    b = data[pos]; pos += 1
+    b = data[pos]
+    pos += 1
     if b < 0x80:
         return b, pos
-    n = b & 0x7f
-    return int.from_bytes(data[pos:pos + n], "big"), pos + n
+    n = b & 0x7F
+    return int.from_bytes(data[pos : pos + n], "big"), pos + n
 
 
 def _asn1_integer(data, pos):
     assert data[pos] == 0x02, f"Expected ASN.1 INTEGER at {pos}, got 0x{data[pos]:02x}"
     length, pos = _asn1_length(data, pos + 1)
-    return int.from_bytes(data[pos:pos + length], "big"), pos + length
+    return int.from_bytes(data[pos : pos + length], "big"), pos + length
 
 
 def _load_rsa_nd(pem_path):
     """Extract (n, d) from a PKCS8 RSA private key PEM file (pure stdlib)."""
     import base64 as _b64
+
     with open(pem_path) as f:
         b64 = "".join(l for l in f.read().splitlines() if not l.startswith("---"))
     der = _b64.b64decode(b64)
@@ -423,30 +482,32 @@ def _load_rsa_nd(pem_path):
     pos = 0
     assert der[pos] == 0x30
     _, pos = _asn1_length(der, pos + 1)
-    _, pos = _asn1_integer(der, pos)            # version (skip)
+    _, pos = _asn1_integer(der, pos)  # version (skip)
     seq_len, seq_pos = _asn1_length(der, pos + 1)  # algorithmIdentifier SEQUENCE
     pos = seq_pos + seq_len
-    pk_len, pk_pos = _asn1_length(der, pos + 1)    # privateKey OCTET STRING
-    rsa = der[pk_pos:pk_pos + pk_len]
+    pk_len, pk_pos = _asn1_length(der, pos + 1)  # privateKey OCTET STRING
+    rsa = der[pk_pos : pk_pos + pk_len]
 
     # RSAPrivateKey: SEQUENCE { version, n, e, d, ... }
     assert rsa[0] == 0x30
     _, pos = _asn1_length(rsa, 1)
-    _, pos = _asn1_integer(rsa, pos)            # version (skip)
-    n, pos = _asn1_integer(rsa, pos)            # modulus
-    _e, pos = _asn1_integer(rsa, pos)           # publicExponent (skip)
-    d, _pos = _asn1_integer(rsa, pos)           # privateExponent
+    _, pos = _asn1_integer(rsa, pos)  # version (skip)
+    n, pos = _asn1_integer(rsa, pos)  # modulus
+    _e, pos = _asn1_integer(rsa, pos)  # publicExponent (skip)
+    d, _pos = _asn1_integer(rsa, pos)  # privateExponent
     return n, d
 
 
 def _rsa_sha1_pkcs1v15_sign(message: str, pem_path: str) -> str:
     """Sign message string with RSA-SHA1-PKCS1v15. Returns base64. Pure stdlib."""
-    import hashlib as _hl, base64 as _b64
+    import base64 as _b64
+    import hashlib as _hl
+
     n, d = _load_rsa_nd(pem_path)
     key_len = (n.bit_length() + 7) // 8
-    digest      = _hl.sha1(message.encode()).digest()
+    digest = _hl.sha1(message.encode()).digest()
     digest_info = _SHA1_DIGEST_INFO_PREFIX + digest
-    ps_len      = key_len - len(digest_info) - 3
+    ps_len = key_len - len(digest_info) - 3
     if ps_len < 8:
         raise ValueError("RSA key too short for PKCS1v15")
     padded = b"\x00\x01" + b"\xff" * ps_len + b"\x00" + digest_info
@@ -457,6 +518,7 @@ def _rsa_sha1_pkcs1v15_sign(message: str, pem_path: str) -> str:
 # ---------------------------------------------------------------------------
 # Seestar TCP client
 # ---------------------------------------------------------------------------
+
 
 class SeestarClient:
     """JSON-over-TCP client for the Seestar native protocol (port 4700).
@@ -470,13 +532,13 @@ class SeestarClient:
     """
 
     def __init__(self, host, port=4700, pem_path=None, timeout=5.0):
-        self._host     = host
-        self._port     = port
+        self._host = host
+        self._port = port
         self._pem_path = pem_path
-        self._timeout  = timeout
-        self._sock     = None
-        self._buf      = b""
-        self._id       = 0
+        self._timeout = timeout
+        self._sock = None
+        self._buf = b""
+        self._id = 0
         self._connect()
 
     def _connect(self):
@@ -543,7 +605,7 @@ class SeestarClient:
             if resp is None:
                 break
             if "Event" in resp:
-                continue                      # skip unsolicited events
+                continue  # skip unsolicited events
             if resp.get("method") == method or (msg_id and resp.get("id") == msg_id):
                 return resp
         return None
@@ -599,19 +661,34 @@ class SeestarClient:
         except OSError:
             pass
 
+
 # ---------------------------------------------------------------------------
 # Main tracking loop
 # ---------------------------------------------------------------------------
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Track a plane with the Seestar S30 Pro.")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Print goto commands without connecting to the telescope.")
-    parser.add_argument("--goto-az", type=float, metavar="DEG",
-                        help="Slew to this azimuth and exit (use with --goto-el). "
-                             "Set az_offset_deg = 0 in config when measuring compass error.")
-    parser.add_argument("--goto-el", type=float, metavar="DEG",
-                        help="Elevation for --goto-az (degrees above horizon).")
+    parser = argparse.ArgumentParser(
+        description="Track a plane with the Seestar S30 Pro."
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print goto commands without connecting to the telescope.",
+    )
+    parser.add_argument(
+        "--goto-az",
+        type=float,
+        metavar="DEG",
+        help="Slew to this azimuth and exit (use with --goto-el). "
+        "Set az_offset_deg = 0 in config when measuring compass error.",
+    )
+    parser.add_argument(
+        "--goto-el",
+        type=float,
+        metavar="DEG",
+        help="Elevation for --goto-az (degrees above horizon).",
+    )
     args = parser.parse_args()
 
     if args.goto_az is not None and args.goto_el is None:
@@ -620,21 +697,25 @@ def main():
         parser.error("--goto-el requires --goto-az")
 
     if not args.dry_run and not SEESTAR_HOST:
-        print("Error: seestar.host is not set in config.toml. Use --dry-run to test without a telescope.",
-              file=sys.stderr)
+        print(
+            "Error: seestar.host is not set in config.toml. Use --dry-run to test without a telescope.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     client = None
     if not args.dry_run:
         try:
-            client = SeestarClient(SEESTAR_HOST, SEESTAR_PORT, pem_path=SEESTAR_PEM_PATH)
+            client = SeestarClient(
+                SEESTAR_HOST, SEESTAR_PORT, pem_path=SEESTAR_PEM_PATH
+            )
             print("Connected.")
         except (OSError, ConnectionRefusedError) as e:
             print(f"Cannot connect to Seestar: {e}", file=sys.stderr)
             sys.exit(1)
         # Startup sun-safety check: refuse to run if scope is already pointing
         # at or near the sun, regardless of where it ended up last session.
-        now0   = datetime.now(timezone.utc)
+        now0 = datetime.now(timezone.utc)
         ra, dec = client.current_radec()
         if ra is not None:
             sun_ra, sun_dec = _sun_radec(now0)
@@ -654,7 +735,9 @@ def main():
                     f"(exclusion zone {SUN_EXCLUSION_DEG}°) — please move it away."
                 )
             else:
-                print(f"Scope pointing: RA {ra:.4f}h  Dec {dec:+.3f}°  (sun {sep:.0f}° away — safe)")
+                print(
+                    f"Scope pointing: RA {ra:.4f}h  Dec {dec:+.3f}°  (sun {sep:.3f}° away — safe)"
+                )
         else:
             print("Scope pointing: unknown (could not query position)")
 
@@ -682,13 +765,17 @@ def main():
                 client.close()
             sys.exit(1)
         ra, dec = altaz_to_radec(args.goto_el, args.goto_az, now)
-        print(f"Slewing to az {args.goto_az:.1f}°  el {args.goto_el:+.1f}°  →  RA {ra:.4f}h  Dec {dec:+.3f}°  (sun {sep:.0f}° away)")
+        print(
+            f"Slewing to az {args.goto_az:.1f}°  el {args.goto_el:+.1f}°  →  RA {ra:.4f}h  Dec {dec:+.3f}°  (sun {sep:.0f}° away)"
+        )
         if client:
             _, resp = client.goto_radec(ra, dec)
             if resp is None:
                 print("Done. (no response from Seestar)")
             elif resp.get("code", 0) != 0 and "Event" not in resp:
-                print(f"Seestar error code {resp.get('code')}: {resp.get('error', resp)}")
+                print(
+                    f"Seestar error code {resp.get('code')}: {resp.get('error', resp)}"
+                )
             else:
                 print("Done.")
         else:
@@ -697,11 +784,47 @@ def main():
             client.close()
         sys.exit(0)
 
-    label   = "DRY RUN — " if args.dry_run else ""
-    prev_by_hex: dict = {}
+    # Validate park position before entering the loop.
+    # A user-configured position that is currently sun-unsafe is a hard error.
+    _pv_now = datetime.now(timezone.utc)
+    _pv_sun_el, _pv_sun_az = sun_altaz(_pv_now)
+    _park_safe, _park_sep = check_sun_safe(PARK_AZ, PARK_EL, _pv_sun_az, _pv_sun_el)
+    if not _park_safe:
+        if _PARK_CUSTOM:
+            print(
+                f"Error: park position az {PARK_AZ:.1f}° el {PARK_EL:+.1f}° is "
+                f"{_park_sep:.1f}° from the sun — within the {SUN_EXCLUSION_DEG}° exclusion zone.\n"
+                f"       Correct park_az / park_el in config.toml.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"Error: default park position (north, az 0° el {PARK_EL:+.1f}°) is "
+                f"{_park_sep:.1f}° from the sun — this should not happen at mid-latitudes.\n"
+                f"       Set park_az / park_el explicitly in config.toml.",
+                file=sys.stderr,
+            )
+        if client:
+            client.close()
+        sys.exit(1)
 
-    print(f"{label}Starting tracking loop (Ctrl-C to stop). Poll every {POLL_INTERVAL}s.")
-    print(f"Observer: {CENTER_LAT:.5f}, {CENTER_LON:.5f}  alt MSL {OBSERVER_ALT_MSL_M:.0f} m")
+    label = "DRY RUN — " if args.dry_run else ""
+    prev_by_hex: dict = {}
+    paused = False
+    _parked = False  # True once we've slewed to park; reset when a target appears
+    _last_goto_az = None  # last commanded az — used for sun check while holding
+    _last_goto_el = None
+    _is_tty = sys.stdin.isatty()
+    _old_term = termios.tcgetattr(sys.stdin) if _is_tty else None
+    if _is_tty:
+        tty.setcbreak(sys.stdin.fileno())
+
+    print(
+        f"{label}Starting tracking loop (Ctrl-C to stop). Poll every {POLL_INTERVAL}s."
+    )
+    print(
+        f"Observer: {CENTER_LAT:.5f}, {CENTER_LON:.5f}  alt MSL {OBSERVER_ALT_MSL_M:.0f} m"
+    )
 
     sun_el0, sun_az0 = sun_altaz(datetime.now(timezone.utc))
     sun_vis = f"el {sun_el0:+.1f}°  az {sun_az0:.1f}°"
@@ -728,6 +851,35 @@ def main():
 
     try:
         while True:
+            if _is_tty:
+                r, _, _ = select.select([sys.stdin], [], [], 0)
+                if r:
+                    ch = sys.stdin.read(1)
+                    if ch == " ":
+                        paused = not paused
+                        _t = datetime.now(timezone.utc)
+                        if paused:
+                            print(
+                                f"[{_t:%H:%M:%S}] ⏸  paused — scope holds position  (Space to resume)"
+                            )
+                        else:
+                            print(f"[{_t:%H:%M:%S}] ▶  resumed")
+
+            # Sun check on the held position — runs every iteration, even while waiting for planes.
+            if _last_goto_az is not None:
+                _chk_t = datetime.now(timezone.utc)
+                _chk_sun_el, _chk_sun_az = sun_altaz(_chk_t)
+                _hold_safe, _hold_sep = check_sun_safe(
+                    _last_goto_az, _last_goto_el, _chk_sun_az, _chk_sun_el
+                )
+                if not _hold_safe:
+                    if paused:
+                        paused = False
+                    print(
+                        f"[{_chk_t:%H:%M:%S}] !! WARNING: scope hold position "
+                        f"{_hold_sep:.1f}° from sun — move scope away"
+                    )
+
             if client:
                 client.heartbeat()
 
@@ -737,7 +889,7 @@ def main():
                 time.sleep(POLL_INTERVAL)
                 continue
 
-            now    = datetime.now(timezone.utc)
+            now = datetime.now(timezone.utc)
             sun_el, sun_az = sun_altaz(now)
             ac, az, el, entry_t = select_target(aircraft, prev_by_hex, sun_az, sun_el)
 
@@ -746,10 +898,21 @@ def main():
                 prev_by_hex[p["hex"]] = {**p, "_ts": time.monotonic()}
 
             if ac is None:
-                tgt_desc = (TARGET_CALLSIGN or TARGET_HEX or "any in-sector")
-                print(f"[{now:%H:%M:%S}] No suitable target ({tgt_desc})")
+                if not _parked:
+                    tgt_desc = TARGET_CALLSIGN or TARGET_HEX or "any in-sector"
+                    park_ra, park_dec = altaz_to_radec(PARK_EL, PARK_AZ, now)
+                    if client:
+                        client.goto_radec(park_ra, park_dec, label="park")
+                    _last_goto_az, _last_goto_el = PARK_AZ, PARK_EL
+                    _parked = True
+                    print(
+                        f"[{now:%H:%M:%S}] No target ({tgt_desc}) — "
+                        f"parking at az {PARK_AZ:.0f}° el {PARK_EL:+.0f}°"
+                    )
                 time.sleep(POLL_INTERVAL)
                 continue
+
+            _parked = False  # target acquired — scope will leave park on next goto
 
             # ── Hard safety gate: second independent check before any goto ──
             # This fires even if select_target had a bug and returned a sun-unsafe target.
@@ -779,41 +942,55 @@ def main():
 
             goto_az = (goto_az + AZ_OFFSET_DEG) % 360
             ra, dec = altaz_to_radec(goto_el, goto_az, now)
-            ident    = ac.get("callsign") or ac.get("hex") or "?"
-            dist_km  = math.hypot(_haversine_m(ac["lat"], ac["lon"]),
-                                  (ac["alt_ft"] or 0) * 0.3048) / 1000.0
-            proj_tag     = f"+{SLEW_TIME_S:.0f}s" if proj is not None else "now"
+            ident = ac.get("callsign") or ac.get("hex") or "?"
+            dist_km = (
+                math.hypot(
+                    _haversine_m(ac["lat"], ac["lon"]), (ac["alt_ft"] or 0) * 0.3048
+                )
+                / 1000.0
+            )
+            proj_tag = f"+{SLEW_TIME_S:.0f}s" if proj is not None else "now"
             approach_tag = f" in{entry_t}s" if entry_t else ""
 
-            dist_ok      = dist_km <= PHOTO_MAX_KM
-            el_ok        = el >= PHOTO_MIN_EL_DEG
-            photo_ok     = dist_ok and el_ok
+            dist_ok = dist_km <= PHOTO_MAX_KM
+            el_ok = el >= PHOTO_MIN_EL_DEG
+            photo_ok = dist_ok and el_ok
             ident_padded = f"{ident:7s}"
-            ident_fmt    = f"{_GREEN}{ident_padded}{_RESET}" if photo_ok else ident_padded
-            el_fmt       = f"{_RED}el{el:+5.1f}°{_RESET}" if not el_ok   else f"el{el:+5.1f}°"
-            dist_fmt     = f"{_RED}{dist_km:4.0f}km{_RESET}" if not dist_ok else f"{dist_km:4.0f}km"
+            ident_fmt = f"{_GREEN}{ident_padded}{_RESET}" if photo_ok else ident_padded
+            el_fmt = f"{_RED}el{el:+5.1f}°{_RESET}" if not el_ok else f"el{el:+5.1f}°"
+            dist_fmt = (
+                f"{_RED}{dist_km:4.0f}km{_RESET}"
+                if not dist_ok
+                else f"{dist_km:4.0f}km"
+            )
 
             print(
                 f"[{now:%H:%M:%S}] {ident_fmt} "
                 f"az{az:6.1f}° {el_fmt} {dist_fmt} "
-                f"{proj_tag} ☉{sep:.0f}°{approach_tag}"
+                f"{proj_tag} ☉{sep:.3f}°{approach_tag}"
                 + (f" Δ{AZ_OFFSET_DEG:+.1f}°" if AZ_OFFSET_DEG else "")
             )
 
-            if client and dist_ok:
+            if client and dist_ok and not paused:
                 msg_id, resp = client.goto_radec(ra, dec, label=ident)
                 if resp is None:
                     print("  (no response from Seestar)")
                 elif "Event" in resp:
-                    pass                          # unsolicited event — not an error
+                    pass  # unsolicited event — not an error
                 elif resp.get("code", 0) != 0:
-                    print(f"  Seestar error code {resp.get('code')}: {resp.get('error', resp)}")
+                    print(
+                        f"  Seestar error code {resp.get('code')}: {resp.get('error', resp)}"
+                    )
+                else:
+                    _last_goto_az, _last_goto_el = goto_az, goto_el
 
             time.sleep(POLL_INTERVAL)
 
     except KeyboardInterrupt:
         print("\nStopped.")
     finally:
+        if _old_term:
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, _old_term)
         if client:
             client.close()
 

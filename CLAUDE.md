@@ -37,6 +37,11 @@ Two sections: `[observer]` for location/radius, `[seestar]` for telescope settin
 - **Heartbeat**: `scope_get_equ_coord` (id=420) sent every loop iteration to prevent
   inactivity shutdown (~60 s idle timeout observed).
 
+## Park position (idle safety)
+When no suitable target is found, the scope slews to `PARK_AZ` / `PARK_EL` (default: az 0°, north, el 5°). North is unconditionally sun-safe at mid-latitudes. The park position is validated at startup — if it is within `SUN_EXCLUSION_DEG` of the sun, the script exits with an error (hard error for user-configured positions, unexpected error for the default). `_parked` flag prevents repeated slews: once parked the scope holds until a new target appears. The per-loop sun check at the top of every iteration also monitors the park position.
+
+`_PARK_CUSTOM = "park_az" in _see or "park_el" in _see` detects whether the user overrode the default.
+
 ## Sun safety (never remove either layer)
 1. `select_target()` filters out aircraft within `SUN_EXCLUSION_DEG` (default 30°).
 2. `check_sun_safe()` hard-blocks any goto within `_MIN_SUN_EXCLUSION` (15°, unconfigurable).
@@ -72,6 +77,11 @@ Example:
 [09:12:16] DLH1VR  az 227.5° el +16.4°   17km +16s ☉101° Δ-1.5°
 ```
 Line 1: `el` and range both red. Line 3: both in range → callsign green.
+
+## Space-bar pause
+Space toggles goto commands on/off. Terminal is put into cbreak mode (`tty.setcbreak`) so the keypress is detected without Enter; restored in `finally`. When paused the scope holds position and the log continues. Goto gate: `client and dist_ok and not paused`.
+
+Sun safety while holding: at the top of every loop iteration (before any `continue` for missing aircraft), the script checks whether the sun has drifted within `SUN_EXCLUSION_DEG` of `_last_goto_az/_last_goto_el` (the last commanded position). If it has, the script auto-resumes (if paused) and prints a warning regardless. This covers both the paused case and the "waiting for planes" case. `_last_goto_az/el` is updated only on a successful goto response (code == 0).
 
 ## Pointing accuracy and compass correction
 The Seestar's internal magnetometer is the dominant error source in alt/az mode:

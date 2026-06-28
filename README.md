@@ -1,5 +1,17 @@
 # Seestar Plane Tracker
 
+> **Disclaimer:** This script is an independent hobby project and is not affiliated with
+> or endorsed by ZWO. It communicates with the Seestar S30 Pro over an undocumented
+> internal protocol. Use it entirely at your own risk. The author accepts no
+> responsibility for any damage to your telescope, camera sensor, or any other equipment.
+
+> ⚠️ **This script points an optical instrument at the sky during daylight hours.**
+> Pointing a telescope at the sun — even briefly — can permanently destroy the sensor
+> and cause eye injury. The script enforces a sun exclusion zone, validates the park
+> position at startup, and monitors the held position every loop iteration, but **no
+> software safety is a substitute for physical awareness**. Always know where the sun
+> is before running the script.
+
 Tracks aircraft with a [Seestar S30 Pro](https://www.zwoastro.com/product/seestar-s30/) smart telescope.
 Polls live ADS-B data, picks the best in-sector aircraft, converts its position to equatorial
 coordinates, and steers the mount via the Seestar's native TCP protocol — no third-party packages
@@ -122,6 +134,10 @@ No aircraft data — retrying …
 
 Lines 3–6: `el` and the range are both red — the plane is too far and too low for a useful shot.
 Line 8 is the first where both thresholds are met (`el ≥ 15°`, range ≤ 20 km): the callsign turns green.
+
+## Pausing the tracker
+
+Press **Space** in the terminal to pause goto commands. The scope holds its current position while the script keeps logging. Press **Space** again to resume. This lets you activate the Seestar app's **Follow Object** feature once a plane is in frame without the script fighting it.
 
 ## Sun safety
 
