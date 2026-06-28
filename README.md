@@ -75,6 +75,11 @@ Two independent checks prevent the mount from pointing at the sun:
 
 ## Pointing accuracy and compass calibration
 
+> **The Seestar must be in alt/az mode**, not EQ (equatorial) mode.
+> After a night session the app may leave the mount in EQ mode — check the mode
+> indicator in the Seestar app before starting a daytime session and switch back
+> to alt/az if needed. The compass calibration is only meaningful in alt/az mode.
+
 ### Why the compass matters
 
 In alt/az mode the Seestar determines its azimuth orientation from an internal
@@ -88,7 +93,18 @@ direction. Because the error is fixed for a given setup location, a one-time
 offset correction is sufficient — no recalibration is needed during a session
 unless the Seestar is physically moved or restarted.
 
-### Measuring the offset with the Seestar widefield view
+### Step 1 — Hardware compass calibration (Seestar app)
+
+Before measuring any residual offset, calibrate the Seestar's compass in the app:
+
+**Me → Advanced Features → Level & Compass Calibration**
+
+Follow the on-screen instructions (typically: rotate the Seestar slowly through
+360° while keeping it level). Repeat if pointing is still far off after calibration.
+A well-calibrated compass leaves only a small residual error (a few degrees) that
+can then be dialled in with `az_offset_deg`.
+
+### Step 2 — Measuring the residual offset with the Seestar widefield view
 
 1. **Start the tracker** and let it slew to an aircraft.
 2. **Pause the script** (Ctrl-C) immediately after the slew.
@@ -112,14 +128,41 @@ offset_deg ≈ (pixel distance from center / half image width in pixels) × 4.5�
 For example, if the aircraft appears one-third of the way from the center to the
 right edge, the offset is roughly `0.33 × 4.5° ≈ 1.5°`.
 
-Alternatively, use a **known landmark**:
-1. Look up the compass bearing from your location to a distant, identifiable
-   landmark (church tower, antenna, etc.) using a map or compass app.
-2. Command the scope to slew to that bearing and elevation.
-3. Check in the widefield view how far the landmark is from center, and in which
-   direction. Convert using the formula above.
+Alternatively, use a **known landmark** — this gives a more reliable measurement
+than a moving aircraft:
 
-### Slewing to a specific azimuth
+![High-voltage pylon used as calibration landmark](Landmark.jpg)
+
+1. Pick a distant, unambiguous landmark visible from your location (high-voltage
+   pylon, church tower, antenna mast). The farther away, the better.
+2. Determine its exact compass bearing from your position (see tools below).
+3. Use `--goto-az` to slew the scope to that bearing (step 3 below).
+4. Fine-tune until the landmark is centred in the telephoto view.
+5. The difference between the commanded azimuth and the true bearing is your offset.
+
+#### Finding the compass bearing to a landmark
+
+The bearing between two geographic coordinates is called the **forward azimuth**
+(0° = north, clockwise). Several free tools compute it directly:
+
+- **Google Maps** — right-click your position → *Measure distance*, then
+  click the landmark. The bearing is not shown directly, but you can read off
+  both sets of coordinates and paste them into one of the calculators below.
+- **Movable Type Scripts** — paste two lat/lon pairs into the bearing calculator
+  at [movable-type.co.uk/scripts/latlong.html](https://www.movable-type.co.uk/scripts/latlong.html)
+  (see "Bearing" section). Good explanations of the underlying maths.
+- **CalTopo / SARTopo** — free topographic map tool at
+  [caltopo.com](https://caltopo.com). Draw a line between two points; the
+  bearing is shown in the line properties panel.
+- **OpenTopoMap + coordinates** — use [opentopomap.org](https://opentopomap.org)
+  to identify the landmark visually, read its coordinates from the URL or cursor,
+  then compute the bearing with one of the tools above.
+
+All tools report **true north** bearings. The Seestar's compass also references
+true north (it applies magnetic declination automatically using the GPS location),
+so no manual declination correction is needed.
+
+### Step 3 — Slewing to a specific azimuth
 
 The Seestar app does not expose a raw azimuth input in scenery mode. Use the
 `--goto-az` / `--goto-el` flags instead — the script connects, slews once,
@@ -135,7 +178,7 @@ applies the sun safety check before every goto, so it is safe to use freely.
 **Important:** set `az_offset_deg = 0` in `config.toml` before measuring the
 compass error, so the raw mechanical pointing is what you observe.
 
-### Applying the correction
+### Step 4 — Applying the correction
 
 Set `az_offset_deg` in `config.toml`:
 

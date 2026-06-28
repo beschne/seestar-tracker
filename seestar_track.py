@@ -678,8 +678,13 @@ def main():
         ra, dec = altaz_to_radec(args.goto_el, args.goto_az, now)
         print(f"Slewing to az {args.goto_az:.1f}°  el {args.goto_el:+.1f}°  →  RA {ra:.4f}h  Dec {dec:+.3f}°  (sun {sep:.0f}° away)")
         if client:
-            client.goto_radec(ra, dec)
-            print("Done.")
+            _, resp = client.goto_radec(ra, dec)
+            if resp is None:
+                print("Done. (no response from Seestar)")
+            elif resp.get("code", 0) != 0 and "Event" not in resp:
+                print(f"Seestar error code {resp.get('code')}: {resp.get('error', resp)}")
+            else:
+                print("Done.")
         else:
             print("(dry run — no connection)")
         if client:
