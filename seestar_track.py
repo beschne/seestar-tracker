@@ -90,10 +90,10 @@ PARK_AZ = float(_see.get("park_az", 0.0))  # north — safe at all mid-latitudes
 PARK_EL = float(_see.get("park_el", 5.0))
 _PARK_CUSTOM = "park_az" in _see or "park_el" in _see
 
-_GREEN  = "\033[32m"       if sys.stdout.isatty() else ""
-_RED    = "\033[31m"       if sys.stdout.isatty() else ""
+_GREEN = "\033[32m" if sys.stdout.isatty() else ""
+_RED = "\033[31m" if sys.stdout.isatty() else ""
 _ORANGE = "\033[38;5;208m" if sys.stdout.isatty() else ""
-_RESET  = "\033[0m"        if sys.stdout.isatty() else ""
+_RESET = "\033[0m" if sys.stdout.isatty() else ""
 
 USER_AGENT = "seestar-track/1.0 (personal hobby use)"
 
@@ -839,7 +839,9 @@ def main():
     print(f"☉ {sun_vis}  · sun exclusion zone: {SUN_EXCLUSION_DEG:.0f}° around the sun")
 
     if SEESTAR_SECTOR:
-        print(f"Sector: {SEESTAR_SECTOR[0]:.0f}°–{SEESTAR_SECTOR[1]:.0f}°  · el ≥ {PHOTO_MIN_EL_DEG:.0f}°  · ≤ {PHOTO_MAX_KM:.0f} km")
+        print(
+            f"Sector: {SEESTAR_SECTOR[0]:.0f}°–{SEESTAR_SECTOR[1]:.0f}°  · el ≥ {PHOTO_MIN_EL_DEG:.0f}°  · ≤ {PHOTO_MAX_KM:.0f} km"
+        )
         sun_el_chk, sun_az_chk = sun_altaz(datetime.now(timezone.utc))
         if sun_el_chk > 0 and _in_seestar_sector(sun_az_chk):
             print(
@@ -847,7 +849,9 @@ def main():
                 f"aircraft within {SUN_EXCLUSION_DEG}° of it will be excluded."
             )
     else:
-        print(f"Sector: 360° (no sector defined)  · el ≥ {PHOTO_MIN_EL_DEG:.0f}°  · ≤ {PHOTO_MAX_KM:.0f} km")
+        print(
+            f"Sector: 360° (no sector defined)  · el ≥ {PHOTO_MIN_EL_DEG:.0f}°  · ≤ {PHOTO_MAX_KM:.0f} km"
+        )
     if TARGET_CALLSIGN:
         print(f"Locked on callsign: {TARGET_CALLSIGN}")
     elif TARGET_HEX:
