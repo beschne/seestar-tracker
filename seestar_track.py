@@ -690,6 +690,11 @@ def main():
         metavar="DEG",
         help="Elevation for --goto-az (degrees above horizon).",
     )
+    parser.add_argument(
+        "--no-bell",
+        action="store_true",
+        help="Suppress the terminal bell when an aircraft is about to enter the sector.",
+    )
     args = parser.parse_args()
 
     if args.goto_az is not None and args.goto_el is None:
@@ -834,7 +839,7 @@ def main():
     print(f"☉ {sun_vis}  · sun exclusion zone: {SUN_EXCLUSION_DEG:.0f}° around the sun")
 
     if SEESTAR_SECTOR:
-        print(f"Sector: {SEESTAR_SECTOR[0]:.0f}°–{SEESTAR_SECTOR[1]:.0f}°")
+        print(f"Sector: {SEESTAR_SECTOR[0]:.0f}°–{SEESTAR_SECTOR[1]:.0f}°  · el ≥ {PHOTO_MIN_EL_DEG:.0f}°  · ≤ {PHOTO_MAX_KM:.0f} km")
         sun_el_chk, sun_az_chk = sun_altaz(datetime.now(timezone.utc))
         if sun_el_chk > 0 and _in_seestar_sector(sun_az_chk):
             print(
@@ -842,7 +847,7 @@ def main():
                 f"aircraft within {SUN_EXCLUSION_DEG}° of it will be excluded."
             )
     else:
-        print("Sector: 360° (no sector defined)")
+        print(f"Sector: 360° (no sector defined)  · el ≥ {PHOTO_MIN_EL_DEG:.0f}°  · ≤ {PHOTO_MAX_KM:.0f} km")
     if TARGET_CALLSIGN:
         print(f"Locked on callsign: {TARGET_CALLSIGN}")
     elif TARGET_HEX:
@@ -951,7 +956,12 @@ def main():
                 / 1000.0
             )
             proj_tag = f"+{SLEW_TIME_S:.0f}s" if proj is not None else "now"
-            approach_tag = f" {_ORANGE}in {entry_t}s{_RESET}" if entry_t else ""
+            if entry_t:
+                if not args.no_bell:
+                    print("\a", end="", flush=True)
+                approach_tag = f" {_ORANGE}in {entry_t}s{_RESET}"
+            else:
+                approach_tag = ""
 
             dist_ok = dist_km <= PHOTO_MAX_KM
             el_ok = el >= PHOTO_MIN_EL_DEG
