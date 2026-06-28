@@ -967,7 +967,7 @@ def main():
             print(
                 f"[{now:%H:%M:%S}] {ident_fmt} "
                 f"az{az:6.1f}° {el_fmt} {dist_fmt} "
-                f"{proj_tag} ☉{sep:.3f}°{approach_tag}"
+                f"{proj_tag} ☉{sep:3.0f}°{approach_tag}"
                 + (f" Δ{AZ_OFFSET_DEG:+.1f}°" if AZ_OFFSET_DEG else "")
             )
 
