@@ -60,23 +60,23 @@ stdout is not a TTY.
 
 ## Log format
 ```
-[HH:MM:SS] CALLSGN  az NNN.N° el ±NN.N°  NNNkm +NNs ☉NNN° [inNs] [Δ±N.N°]
+[HH:MM:SS] CALLSGN  az NNN.N° el ±NN.N°  NNNkm +NNs ☉NNN° [Δ±N.N°] [in Ns]
 ```
 - Callsign: **green** when both photo thresholds are met
 - `el`: **red** when below `PHOTO_MIN_EL_DEG`
 - `NNNkm`: **red** when above `PHOTO_MAX_KM`
 - `+NNs`: predictive offset (seconds ahead the goto targets); `now` if no projection
 - `☉NNN°`: sun separation
-- `inNs`: seconds until aircraft enters sector (approaching only)
 - `Δ±N.N°`: active azimuth correction; omitted when zero
+- `in Ns`: **orange** — seconds until aircraft enters sector; bell rings each iteration
 
 Example:
 ```
-[09:12:04] LHX942  az 209.3° el  +3.1°  187km +16s ☉ 93° Δ-1.5°  in42s
-[09:12:10] DLH1VR  az 222.3° el  +8.3°   28km +16s ☉ 99° Δ-1.5°
+[09:12:04] LHX942  az 208.1° el  +3.1°  187km +16s ☉93° Δ-1.5° in 18s
+[09:12:10] DLH1VR  az 222.3° el  +8.3°   28km +16s ☉99° Δ-1.5°
 [09:12:16] DLH1VR  az 227.5° el +16.4°   17km +16s ☉101° Δ-1.5°
 ```
-Line 1: `el` and range both red. Line 3: both in range → callsign green.
+Line 1: `el` and range both red, approach tag orange. Line 3: both in range → callsign green.
 
 ## Space-bar pause
 Space toggles goto commands on/off. Terminal is put into cbreak mode (`tty.setcbreak`) so the keypress is detected without Enter; restored in `finally`. When paused the scope holds position and the log continues. Goto gate: `client and dist_ok and not paused`.

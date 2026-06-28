@@ -115,25 +115,33 @@ Each tracking line follows this format:
 | `NNNkm` | red | Slant range; red when above `photo_max_km` |
 | `+NNs` | — | Predictive offset: goto aims this many seconds ahead |
 | `☉NNN°` | — | Angular separation from the sun |
-| `inNs` | — | Seconds until aircraft enters the sector (approaching only) |
+| `in Ns` | orange | Seconds until aircraft enters the sector (approaching only) |
 | `Δ±N.N°` | — | Active azimuth correction (omitted when zero) |
 
 Example (colours cannot be shown in plain text):
 
 ```
-☉ el +47.2°  az 112.0°  · exclusion zone: 30.0°
-Sector: 210°–240°  ·  auto-select: slowest in-sector aircraft.
-[09:12:04] LHX942  az 209.3° el  +3.1°  187km +16s ☉ 93° Δ-1.5°  in42s
-[09:12:06] LHX942  az 212.7° el  +4.2°  121km +16s ☉ 94° Δ-1.5°
-[09:12:10] DLH1VR  az 222.3° el  +8.3°   28km +16s ☉ 99° Δ-1.5°
-[09:12:12] DLH1VR  az 225.1° el +12.6°   22km +16s ☉101° Δ-1.5°
+☉ el +47.2°  az 112.0°  · sun exclusion zone: 30° around the sun
+Sector: 210°–240°  · el ≥ 15°  · ≤ 25 km
+Auto-select: slowest in-sector aircraft.
+[09:12:02] LHX942  az 208.1° el  +3.1°  187km +16s ☉93° Δ-1.5° in 18s
+[09:12:04] LHX942  az 209.7° el  +3.4°  164km +16s ☉94° Δ-1.5° in 6s
+[09:12:06] LHX942  az 212.7° el  +4.2°  121km +16s ☉94° Δ-1.5°
 No aircraft data — retrying …
+[09:12:10] DLH1VR  az 222.3° el  +8.3°   28km +16s ☉99° Δ-1.5°
+[09:12:12] DLH1VR  az 225.1° el +12.6°   22km +16s ☉101° Δ-1.5°
+[09:12:14] DLH1VR  az 226.8° el +14.2°   21km +16s ☉101° Δ-1.5°
 [09:12:16] DLH1VR  az 227.5° el +16.4°   17km +16s ☉101° Δ-1.5°
-[09:12:20] DLH1VR  az 230.0° el +20.1°   14km +16s ☉101° Δ-1.5°
+[09:12:18] DLH1VR  az 228.2° el +18.1°   14km +16s ☉101° Δ-1.5°
+[09:12:20] ⏸  paused — scope holds position  (Space to resume)
+[09:12:28] DLH1VR  az 230.0° el +20.1°   12km +16s ☉102° Δ-1.5°
+No aircraft data — retrying …
 ```
 
-Lines 3–6: `el` and the range are both red — the plane is too far and too low for a useful shot.
-Line 8 is the first where both thresholds are met (`el ≥ 15°`, range ≤ 20 km): the callsign turns green.
+Lines 4–5: LHX942 approaching sector — `el` and range both red, approach countdown in orange.
+Lines 6–10: in sector but below photo thresholds — `el` and/or range red.
+Lines 11–12: both thresholds met (`el ≥ 15°`, range ≤ 25 km) — callsign turns green.
+Line 13: Space was pressed — scope holds while Follow Object is active in the Seestar app.
 
 ## Pausing the tracker
 
