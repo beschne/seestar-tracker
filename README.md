@@ -17,6 +17,11 @@ Polls live ADS-B data, picks the best in-sector aircraft, converts its position 
 coordinates, and steers the mount via the Seestar's native TCP protocol — no third-party packages
 required.
 
+**This is a proof of concept.** The `scope_goto` command is not perfectly reliable — the mount
+does not always settle exactly on the predicted position. Getting a usable shot requires switching
+to the Seestar app's Follow Object feature once the plane enters the frame, which needs some
+practice to trigger quickly enough before the plane drifts out of the field of view.
+
 ## Requirements
 
 - Python 3.11+
