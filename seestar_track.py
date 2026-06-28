@@ -800,7 +800,7 @@ def main():
                 + (f" Δ{AZ_OFFSET_DEG:+.1f}°" if AZ_OFFSET_DEG else "")
             )
 
-            if client:
+            if client and dist_ok:
                 msg_id, resp = client.goto_radec(ra, dec, label=ident)
                 if resp is None:
                     print("  (no response from Seestar)")
