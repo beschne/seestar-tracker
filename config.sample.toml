@@ -1,0 +1,50 @@
+[observer]
+center_lat = 48.8566
+center_lon = 2.3522
+radius_km  = 50
+# Optional: used to compute elevation angles.
+# observer_alt_m = 0.0   # GPS / WGS-84 ellipsoidal height in metres
+# geoid_offset_m = 0.0   # geoid undulation; MSL = observer_alt_m − geoid_offset_m
+
+# ── Seestar S30 Pro ─────────────────────────────────────────────────────────
+[seestar]
+# Hostname or IP address of the Seestar on your network.
+# Hostname example:             "seestar-s30pro.local"
+# AP mode (Seestar as hotspot):  typically "192.168.10.1"
+# Home network IP: check your router's DHCP/device list.
+host = "seestar-s30pro.local"
+
+# Firmware 7.18+ requires RSA challenge-response authentication.
+# Extract the private key from the official Seestar app:
+#   macOS: /Applications/Seestar.app/Wrapper/Seestar.app/my_private.pem
+# Leave empty to skip auth (works on older firmware only).
+pem = "/Applications/Seestar.app/Wrapper/Seestar.app/my_private.pem"
+
+# port = 4700            # TCP port — default for all Seestar models
+
+# Lock onto a specific flight. Omit both to auto-select the slowest in-sector
+# aircraft (lowest angular rate = easiest to track).
+# target_callsign = "DLH123"   # ICAO callsign, case-insensitive
+# target_hex      = "3c6586"   # Mode-S hex, case-insensitive
+
+# Seestar observable sector — compass bearings in degrees (0 = north, clockwise).
+# Wrap-through-north works (e.g. sector_start = 350, sector_end = 10).
+# Omit both to allow 360°.
+# sector_start = 220
+# sector_end   = 260
+
+# poll_interval_s = 2.0        # How often to update pointing (seconds)
+
+# Compass azimuth correction (degrees). Positive = scope was pointing left of target.
+# Measure by comparing a commanded goto to where the target actually appears in the
+# widefield view. See README for the calibration procedure.
+# az_offset_deg = 0.0
+
+# Sun exclusion zone — the scope will never point closer than this to the sun.
+# Hard minimum of 15° is enforced in code regardless of this setting.
+# sun_exclusion_deg = 30.0
+
+# Predictive positioning: the scope is pre-aimed at where the plane will be
+# after the slew completes, not where it is now.
+# slew_time_s = 16.0           # Observed slew duration (seconds); adjust to taste.
+# lookahead_s = 90.0           # How far ahead to look for approaching planes.
