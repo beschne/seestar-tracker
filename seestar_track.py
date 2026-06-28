@@ -701,14 +701,14 @@ def main():
     sun_vis = f"el {sun_el0:+.1f}°  az {sun_az0:.1f}°"
     if sun_el0 < 0:
         sun_vis += "  (below horizon)"
-    print(f"Sun: {sun_vis}  · exclusion zone: {SUN_EXCLUSION_DEG}°")
+    print(f"☀ {sun_vis}  · exclusion zone: {SUN_EXCLUSION_DEG}°")
 
     if SEESTAR_SECTOR:
         print(f"Sector: {SEESTAR_SECTOR[0]:.0f}°–{SEESTAR_SECTOR[1]:.0f}°")
         sun_el_chk, sun_az_chk = sun_altaz(datetime.now(timezone.utc))
         if sun_el_chk > 0 and _in_seestar_sector(sun_az_chk):
             print(
-                f"  Note: sun (az {sun_az_chk:.1f}°) is inside the sector — "
+                f"  Note: ☀ (az {sun_az_chk:.1f}°) is inside the sector — "
                 f"aircraft within {SUN_EXCLUSION_DEG}° of it will be excluded."
             )
     else:
@@ -782,7 +782,7 @@ def main():
             print(
                 f"[{now:%H:%M:%S}] {ident:7s} "
                 f"az{az:6.1f}° el{el:+5.1f}° {dist_km:4.0f}km "
-                f"→ RA{ra:6.3f}h Dec{dec:+6.1f}° {proj_tag} sun{sep:.0f}°{approach_tag}"
+                f"→ RA{ra:6.3f}h Dec{dec:+6.1f}° {proj_tag} ☀{sep:.0f}°{approach_tag}"
             )
 
             if client:
