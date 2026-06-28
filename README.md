@@ -131,7 +131,7 @@ right edge, the offset is roughly `0.33 × 4.5° ≈ 1.5°`.
 Alternatively, use a **known landmark** — this gives a more reliable measurement
 than a moving aircraft:
 
-![High-voltage pylon used as calibration landmark](Landmark.jpg)
+<img src="Landmark.jpg" width="260" align="right" style="margin: 0 0 1em 1.5em">
 
 1. Pick a distant, unambiguous landmark visible from your location (high-voltage
    pylon, church tower, antenna mast). The farther away, the better.
@@ -139,6 +139,8 @@ than a moving aircraft:
 3. Use `--goto-az` to slew the scope to that bearing (step 3 below).
 4. Fine-tune until the landmark is centred in the telephoto view.
 5. The difference between the commanded azimuth and the true bearing is your offset.
+
+<br clear="left">
 
 #### Finding the compass bearing to a landmark
 
